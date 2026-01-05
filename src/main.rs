@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::NaiveDate;
 use reqwest::Client;
 use scraper::{Html, Selector};
@@ -8,7 +8,6 @@ use serde_json::Value;
 
 const USER_AGENT: &str = "curl/8.17.0";
 const TARGET_CATEGORY: &str = "Hard waste, bundled branches and metals";
-const DATE_FORMAT: &str = "%d %B %Y";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -64,6 +63,9 @@ async fn get_regions(client: &Client) -> Result<Vec<(String, String)>> {
         .send()
         .await
         .with_context(|| "sending request")?;
+    if !res.status().is_success() {
+        bail!("response status not ok: {}", res.status());
+    }
     let text = res.text().await.with_context(|| "reading response text")?;
 
     let fragment = Html::parse_document(&text);
@@ -95,6 +97,9 @@ async fn get_region_address_searches(
             .send()
             .await
             .with_context(|| "sending request")?;
+        if !res.status().is_success() {
+            bail!("response status not ok: {}", res.status());
+        }
         let text = res.text().await.with_context(|| "reading response text")?;
 
         let fragment = Html::parse_document(&text);
@@ -169,6 +174,9 @@ async fn get_address_id(client: &Client, search: &str) -> Result<Option<(String,
         .send()
         .await
         .with_context(|| "sending request")?;
+    if !res.status().is_success() {
+        bail!("response status not ok: {}", res.status());
+    }
     let text = res.text().await.with_context(|| "reading response text")?;
 
     let json: Value = serde_json::from_str(&text).with_context(|| "parsing response json")?;
@@ -206,6 +214,9 @@ async fn get_pickup_date(client: &Client, id: &str) -> Result<Option<NaiveDate>>
         .send()
         .await
         .with_context(|| "sending request")?;
+    if !res.status().is_success() {
+        bail!("response status not ok: {}", res.status());
+    }
     let text = res.text().await.with_context(|| "reading response text")?;
 
     let json: Value = serde_json::from_str(&text).with_context(|| "parsing response json")?;
@@ -230,16 +241,32 @@ fn find_date_in_content(content: &str) -> Result<Option<NaiveDate>> {
         let selector = Selector::parse(".next-service").unwrap();
         let body = element.select(&selector).next().unwrap();
         let body_text: String = body.text().collect();
+        let body_trimmed = body_text.trim();
 
-        match NaiveDate::parse_from_str(body_text.trim(), DATE_FORMAT) {
-            Ok(date) => return Ok(Some(date)),
-            Err(_) => {
-                print_label("body");
-                println!("{:?}", body_text);
-                return Ok(None);
+        if let Some(date) = parse_pickup_date(body_trimmed) {
+            return Ok(Some(date));
+        }
+
+        match body_trimmed {
+            "Not available at this address" => (),
+            _ => {
+                bail!("unexpected body for pickup date: {}", body_trimmed);
             }
         }
+
+        print_label("body");
+        return Ok(None);
     }
 
     Ok(None)
+}
+
+fn parse_pickup_date(string: &str) -> Option<NaiveDate> {
+    let formats = ["%d %B %Y", "%a %d/%m/%Y"];
+    for format in formats {
+        if let Ok(date) = NaiveDate::parse_from_str(string, format) {
+            return Some(date);
+        }
+    }
+    None
 }
