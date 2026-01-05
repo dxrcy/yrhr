@@ -89,7 +89,7 @@ fn create_visualization(results: &[(Address, NaiveDate)]) -> Result<()> {
         ..Default::default()
     });
 
-    fs::write("viz/points.geojson", geo.to_string()).with_context(|| "writing geojson file")?;
+    fs::write("points.geojson", geo.to_string()).with_context(|| "writing geojson file")?;
 
     Ok(())
 }
