@@ -1,10 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fs;
 
 use anyhow::{Context, Result, bail};
 use chrono::NaiveDate;
 use reqwest::Client;
 use scraper::{Html, Selector};
-use serde_json::Value;
 
 const USER_AGENT: &str = "curl/8.17.0";
 const TARGET_CATEGORY: &str = "Hard waste, bundled branches and metals";
@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
         .with_context(|| "getting region address searches")?;
 
     print_section("FINDING: DATES");
-    let mut results = get_address_dates(&client, &searches)
+    let results = get_address_dates(&client, &searches)
         .await
         .with_context(|| "getting address dates")?;
 
@@ -37,14 +37,59 @@ async fn main() -> Result<()> {
     }
 
     print_section("RESULTS: DATES");
-    remove_duplicate_dates(&mut results);
-    for (address, date) in &results {
+    let mut results_unique = results.clone();
+    remove_duplicate_dates(&mut results_unique);
+    for (address, date) in &results_unique {
         println!("{}\t{}", date, address.line);
     }
+
+    print_section("RESULTS: MAP");
+    create_visualization(&results).with_context(|| "creating visualization")?;
 
     print_hr();
     println!();
     println!();
+
+    Ok(())
+}
+
+fn create_visualization(results: &[(Address, NaiveDate)]) -> Result<()> {
+    use geojson::{Feature, FeatureCollection, GeoJson, Geometry, Value};
+
+    const AVAILABLE_COLORS: &[&str] = &[
+        "#ff0000", "#0000ff", "#ff00ff", "#880000", "#000088", "#880088", "#008888", "#008800",
+        "#000000",
+    ];
+
+    let mut features = Vec::new();
+    let mut colors = HashMap::<NaiveDate, String>::new();
+
+    for (address, date) in results {
+        let len = colors.len();
+        let color: &str = &colors
+            .entry(*date)
+            .or_insert_with(|| AVAILABLE_COLORS[len].to_string());
+
+        let date_str = date.format("%Y-%m-%d").to_string();
+
+        let properties: [(String, serde_json::Value); _] = [
+            ("color".to_string(), color.into()),
+            ("label".to_string(), date_str.into()),
+        ];
+
+        features.push(Feature {
+            geometry: Some(Geometry::new(Value::Point(vec![address.lon, address.lat]))),
+            properties: Some(properties.into_iter().collect()),
+            ..Default::default()
+        });
+    }
+
+    let geo = GeoJson::from(FeatureCollection {
+        features,
+        ..Default::default()
+    });
+
+    fs::write("viz/points.geojson", geo.to_string()).with_context(|| "writing geojson file")?;
 
     Ok(())
 }
@@ -85,9 +130,6 @@ async fn get_regions(client: &Client) -> Result<Vec<(String, String)>> {
         let href = element
             .attr("href")
             .with_context(|| "missing `href` tag on `<a>`")?;
-        if regions.len() > 5 {
-            break;
-        }
         regions.push((name, base_url.to_string() + href));
     }
 
@@ -173,7 +215,7 @@ async fn get_address_dates(
     Ok(results)
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Address {
     id: String,
     line: String,
@@ -201,7 +243,8 @@ async fn get_address_id(client: &Client, search: &str) -> Result<Option<Address>
     }
     let text = res.text().await.with_context(|| "reading response text")?;
 
-    let json: Value = serde_json::from_str(&text).with_context(|| "parsing response json")?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).with_context(|| "parsing response json")?;
     let Some(data) = json
         .get("Items")
         .with_context(|| "missing json key `Items`")?
@@ -257,7 +300,8 @@ async fn get_pickup_date(client: &Client, id: &str) -> Result<Option<NaiveDate>>
     }
     let text = res.text().await.with_context(|| "reading response text")?;
 
-    let json: Value = serde_json::from_str(&text).with_context(|| "parsing response json")?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).with_context(|| "parsing response json")?;
     let content = json.get("responseContent").unwrap().as_str().unwrap();
 
     find_date_in_content(&content)

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 chrono = "0.4.42"
+geojson = "0.24.2"
 reqwest = { version = "0.13.1", features = ["blocking"] }
 scraper = "0.25.0"
 serde = { version = "1.0.228", features = ["derive"] }
