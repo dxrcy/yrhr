@@ -10,7 +10,7 @@ fetch("points.geojson")
         const layer = L.geoJSON(data, {
             pointToLayer: (feature, latlng) =>
                 L.circleMarker(latlng, {
-                    radius: 10,
+                    radius: 8,
                     fillOpacity: 0.8,
                     color: feature.properties.color,
                     label: feature.properties.label,
@@ -28,4 +28,42 @@ fetch("points.geojson")
         map.fitBounds(layer.getBounds(), {
             padding: [20, 20],
         });
+
+        buildLegendFromData(data);
     });
+
+function buildLegendFromData(data) {
+    const mapLegend = new Map();
+
+    const sortedFeatures = data.features
+        .sort((a, b) => a.properties.label.localeCompare(b.properties.label))
+
+    sortedFeatures.forEach(f => {
+        mapLegend.set(
+            f.properties.label,
+            f.properties.color,
+        );
+    });
+
+    const sortedLegend = Array.from(mapLegend.entries);
+        // .sort((a, b) => a[0].localeCompare(b[0]))
+
+    const legend = L.control({ position: "bottomright" });
+
+    legend.onAdd = function () {
+        const div = L.DomUtil.create("div", "legend");
+        div.innerHTML = "<strong>Legend</strong><br>";
+
+        mapLegend.forEach((color, name) => {
+            div.innerHTML += `
+                <div class="legend-item">
+                    <span class="legend-color" style="background:${color}"></span>
+                    ${name}
+                </div>`;
+        });
+
+        return div;
+    };
+
+    legend.addTo(map);
+}

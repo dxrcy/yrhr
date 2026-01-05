@@ -1,0 +1,22 @@
+.legend {
+    background: white;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 18px;
+    color: #333;
+    border-radius: 4px;
+    box-shadow: 0 0 6px rgba(0,0,0,0.2);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.legend-color {
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    border: 1px solid #000;
+}

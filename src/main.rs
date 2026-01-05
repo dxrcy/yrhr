@@ -58,7 +58,7 @@ fn create_visualization(results: &[(Address, NaiveDate)]) -> Result<()> {
 
     const AVAILABLE_COLORS: &[&str] = &[
         "#ff0000", "#0000ff", "#ff00ff", "#880000", "#000088", "#880088", "#008888", "#008800",
-        "#000000",
+        "#ff8800",
     ];
 
     let mut features = Vec::new();
