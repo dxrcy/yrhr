@@ -160,7 +160,7 @@ async fn get_region_address_searches(
         let selector = Selector::parse(".street-columns > ul > li > label")
             .expect("parsing const html selector");
 
-        for element in fragment.select(&selector).take(5) {
+        for element in fragment.select(&selector) {
             let label: String = element.text().collect();
             searches.push(format!("{} {}", label, name).to_lowercase());
         }
@@ -336,7 +336,6 @@ fn find_date_in_content(content: &str) -> Result<Option<NaiveDate>> {
             }
         }
 
-        print_label("body");
         return Ok(None);
     }
 

@@ -10,7 +10,7 @@ fetch("points.geojson")
         const layer = L.geoJSON(data, {
             pointToLayer: (feature, latlng) =>
                 L.circleMarker(latlng, {
-                    radius: 8,
+                    radius: 6,
                     fillOpacity: 0.8,
                     color: feature.properties.color,
                     label: feature.properties.label,
