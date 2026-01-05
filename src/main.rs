@@ -13,24 +13,33 @@ const TARGET_CATEGORY: &str = "Hard waste, bundled branches and metals";
 async fn main() -> Result<()> {
     let client = Client::builder().user_agent(USER_AGENT).build()?;
 
-    print_section("FINDING REGIONS");
+    print_section("FINDING: REGIONS");
     let regions = get_regions(&client)
         .await
         .with_context(|| "getting regions")?;
 
-    print_section("FINDING ADDRESSES");
+    print_section("FINDING: ADDRESSES");
     let searches = get_region_address_searches(&client, &regions)
         .await
         .with_context(|| "getting region address searches")?;
 
-    print_section("FINDING DATES");
-    let results = get_address_dates(&client, &searches)
+    print_section("FINDING: DATES");
+    let mut results = get_address_dates(&client, &searches)
         .await
         .with_context(|| "getting address dates")?;
 
-    print_section("RESULTS");
-    for (address, date) in results {
-        println!("{}\t{}", date, address);
+    print_section("RESULTS: ADDRESSES");
+    for (address, date) in &results {
+        println!(
+            "{}\t({}, {})\t{}",
+            date, address.lat, address.lon, address.line
+        );
+    }
+
+    print_section("RESULTS: DATES");
+    remove_duplicate_dates(&mut results);
+    for (address, date) in &results {
+        println!("{}\t{}", date, address.line);
     }
 
     print_hr();
@@ -76,6 +85,9 @@ async fn get_regions(client: &Client) -> Result<Vec<(String, String)>> {
         let href = element
             .attr("href")
             .with_context(|| "missing `href` tag on `<a>`")?;
+        if regions.len() > 5 {
+            break;
+        }
         regions.push((name, base_url.to_string() + href));
     }
 
@@ -106,7 +118,7 @@ async fn get_region_address_searches(
         let selector = Selector::parse(".street-columns > ul > li > label")
             .expect("parsing const html selector");
 
-        for element in fragment.select(&selector) {
+        for element in fragment.select(&selector).take(5) {
             let label: String = element.text().collect();
             searches.push(format!("{} {}", label, name).to_lowercase());
         }
@@ -118,8 +130,8 @@ async fn get_region_address_searches(
 async fn get_address_dates(
     client: &Client,
     searches: &[String],
-) -> Result<Vec<(String, NaiveDate)>> {
-    let mut results = Vec::<(String, NaiveDate)>::new();
+) -> Result<Vec<(Address, NaiveDate)>> {
+    let mut results = Vec::new();
 
     for (i, search) in searches.iter().enumerate() {
         if i > 0 {
@@ -129,24 +141,24 @@ async fn get_address_dates(
         print_label("search");
         println!("{}", search);
 
-        let result = get_address_id(&client, search)
+        let Some(address) = get_address_id(&client, search)
             .await
-            .with_context(|| "getting address id")?;
-        let Some((id, address)) = result else {
+            .with_context(|| "getting address id")?
+        else {
             print_label("FAILED");
             println!("address not found");
             continue;
         };
 
         print_label("address");
-        println!("{}", address);
+        println!("{}", address.line);
         print_label("id");
-        println!("{}", id);
+        println!("{}", address.id);
 
-        let result = get_pickup_date(&client, &id)
+        let Some(date) = get_pickup_date(&client, &address.id)
             .await
-            .with_context(|| "getting pickup date")?;
-        let Some(date) = result else {
+            .with_context(|| "getting pickup date")?
+        else {
             print_label("FAILED");
             println!("pickup not available or not found");
             continue;
@@ -158,14 +170,24 @@ async fn get_address_dates(
         results.push((address, date));
     }
 
-    let mut dates = HashSet::<NaiveDate>::new();
-    results.retain(|(_, date)| dates.insert(*date));
-    results.sort_by_key(|(_, date)| *date);
-
     Ok(results)
 }
 
-async fn get_address_id(client: &Client, search: &str) -> Result<Option<(String, String)>> {
+#[derive(Debug)]
+struct Address {
+    id: String,
+    line: String,
+    lat: f64,
+    lon: f64,
+}
+
+fn remove_duplicate_dates(results: &mut Vec<(Address, NaiveDate)>) {
+    let mut dates = HashSet::<NaiveDate>::new();
+    results.retain(|(_, date)| dates.insert(*date));
+    results.sort_by_key(|(_, date)| *date);
+}
+
+async fn get_address_id(client: &Client, search: &str) -> Result<Option<Address>> {
     let url = "https://www.yarraranges.vic.gov.au/api/v1/myarea/search?keywords=".to_string()
         + &search.replace(" ", "%20");
 
@@ -195,14 +217,30 @@ async fn get_address_id(client: &Client, search: &str) -> Result<Option<(String,
         .as_str()
         .with_context(|| "invalid json type for value of key `Id`")?
         .to_string();
-    let address = data
+    let line = data
         .get("AddressSingleLine")
         .with_context(|| "missing json key `AddressSingleLine`")?
         .as_str()
         .with_context(|| "invalid json type for value of key `AddressSingleLine`")?
         .to_string();
 
-    Ok(Some((id, address)))
+    let lat_lon = data
+        .get("LatLon")
+        .with_context(|| "missing json key `LatLon`")?
+        .as_array()
+        .with_context(|| "invalid json type for value of key `LatLon`")?;
+    let lat = lat_lon
+        .get(0)
+        .with_context(|| "missing json item in value of key `LatLon`")?
+        .as_f64()
+        .with_context(|| "invalid json type for value of key `LatLon`")?;
+    let lon = lat_lon
+        .get(1)
+        .with_context(|| "missing json item in value of key `LatLon`")?
+        .as_f64()
+        .with_context(|| "invalid json type for value of key `LatLon`")?;
+
+    Ok(Some(Address { id, line, lat, lon }))
 }
 
 async fn get_pickup_date(client: &Client, id: &str) -> Result<Option<NaiveDate>> {
