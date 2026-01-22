@@ -24,9 +24,11 @@ async fn main() -> Result<()> {
         .with_context(|| "getting region address searches")?;
 
     print_section("FINDING: DATES");
-    let results = get_address_dates(&client, &searches)
+    let mut results = get_address_dates(&client, &searches)
         .await
         .with_context(|| "getting address dates")?;
+
+    sort_dates(&mut results);
 
     print_section("RESULTS: ADDRESSES");
     for (address, date) in &results {
@@ -36,9 +38,10 @@ async fn main() -> Result<()> {
         );
     }
 
-    print_section("RESULTS: DATES");
     let mut results_unique = results.clone();
     remove_duplicate_dates(&mut results_unique);
+
+    print_section("RESULTS: DATES");
     for (address, date) in &results_unique {
         println!("{}\t{}", date, address.line);
     }
@@ -223,10 +226,13 @@ struct Address {
     lon: f64,
 }
 
+fn sort_dates(results: &mut Vec<(Address, NaiveDate)>) {
+    results.sort_by_key(|(_, date)| *date);
+}
+
 fn remove_duplicate_dates(results: &mut Vec<(Address, NaiveDate)>) {
     let mut dates = HashSet::<NaiveDate>::new();
     results.retain(|(_, date)| dates.insert(*date));
-    results.sort_by_key(|(_, date)| *date);
 }
 
 async fn get_address_id(client: &Client, search: &str) -> Result<Option<Address>> {
