@@ -60,8 +60,8 @@ fn create_visualization(results: &[(Address, NaiveDate)]) -> Result<()> {
     use geojson::{Feature, FeatureCollection, GeoJson, Geometry, Value};
 
     const AVAILABLE_COLORS: &[&str] = &[
-        "#ff0000", "#0000ff", "#ff00ff", "#880000", "#000088", "#880088", "#008888", "#008800",
-        "#ff8800",
+        "#ff0000", "#ff8800", "#ffff00", "#44ff00", "#00aa22", "#00cccc", "#0000ff", "#8800ff",
+        "#ff00ff",
     ];
 
     let mut features = Vec::new();
